@@ -1,16 +1,20 @@
-const openai = require('./setup')
-
+const {openai} = require('./setup')
+const fs = require('fs')
+const pdfParse = require("pdf-parse")
+// const pdfParse = require("pdf-parse").default || require("pdf-parse");
 
 const assignmentCreationByTopicName=async(req,res)=>{
     try {
         const {topicsName,difficultyLevel,format,noOfQuestions}=req.body
+        console.log("Topics Name :",topicsName)
         if(!topicsName || !Array.isArray(topicsName) ||topicsName.length===0){
             console.log("Please Provide Topic")
             return res.status(400).json({message:"Please Provide Topic"})
         }
         const instruction = `You are a teaching assistant. I will provide you an array of topics.You will create an assignment consist of ${noOfQuestions} question with diffculty level : ${difficultyLevel} and format will be ${format} based`
-        const topicList = `Topics : ${JSON.stringify(topics)}`
+        const topicList = `Topics : ${JSON.stringify(topicsName)}`
         const prompt = `${instruction} \n\n ${topicList}`
+       
         const result = await openai.chat.completions.create({
             model: 'gpt-4',
             messages: [{ role: 'user', content: prompt }]
@@ -28,75 +32,71 @@ const assignmentCreationByTopicName=async(req,res)=>{
     }
 }
 
-function cleanpdfText(text){
-    const lines= text.split('\n').map(l=>l.trim()).filter(l=>l !=="")
-    const freq={}
-    lines.forEach(line=>{
-        freq[line]=(freq[line] || 0)+1
-    })
-    const totalLines = lines.length
+function cleanPdfText(text) {
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l !== "");
+  const freq = {};
+  lines.forEach(line => { freq[line] = (freq[line] || 0) + 1 });
+  const totalLines = lines.length;
 
- const protectedKeywords = [
+  const protectedKeywords = [
     "definition", "concept", "example", "explain", "introduction",
     "summary", "topic", "advantages", "disadvantages"
-  ]
+  ];
 
   const repeatingLines = Object.keys(freq).filter(line => {
-    // Must be repeated many times
     if (freq[line] < 3) return false;
-
-    // Must be short (header/footer)
     if (line.length > 50) return false;
-
-    // Must not contain academic content
     const lower = line.toLowerCase();
     if (protectedKeywords.some(k => lower.includes(k))) return false;
-
-    // Must appear in 40%+ lines (across pages)
     if (freq[line] < totalLines * 0.4) return false;
-
     return true;
   });
 
-  const cleaned = lines.filter(line => !repeatingLines.includes(line));
-  return cleaned.join("\n");
+  return lines.filter(line => !repeatingLines.includes(line)).join("\n");
 }
 
-const createAssignmentByGivingPdf=async(req,res)=>{
-    try {
-    const pdfPath = req.file.path;
-    const fileBuffer = fs.readFileSync(pdfPath);
-    const pdfData = await pdf(fileBuffer);
+const createAssignmentByGivingPdf = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "PDF required" });
 
-    let text = pdfData.text;
-    text = removeHeadersFooters(text);
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const pdfData = await pdfParse(fileBuffer);
+    const text = cleanPdfText(pdfData.text);
 
     const prompt = `
-You are an expert examiner. Based on this PDF content, generate:
+I am providing you a text which will extract from a pdf you will have to create an assignmnet of medium level consist me of 3 questions from it , but remember its a text from pdf so chances of any header footer any irrelvant text so avoid the irrevalnat text and make assignment from the relevant topic,Extract 3 medium-level assignment questions from this PDF text. Ignore headers, footers, or irrelevant content. Return ONLY JSON in this format:
 
-- 10 MCQs (4 options + correct answer)
-- 5 Short Questions
-- 3 Long Questions
-- 1 Case Study Question
-
-Use ONLY this content:
-
+{
+  "title": "Assignment Title",
+  "questions": [
+    "Question 1",
+    "Question 2",
+    "Question 3"
+  ]
+}
 ${text}
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4.1",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are an expert examiner." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.2
     });
 
     return res.json({
       success: true,
       assignment: response.choices[0].message.content
     });
-
+ 
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, error: "AI error" });
+    console.error("Error generating assignment:", err);
+    return res.status(500).json({ success: false, error: err.message || "AI error" });
   }
-}
+};
+
+
+// module.exports = { createAssignmentByGivingPdf };
+module.exports={createAssignmentByGivingPdf,assignmentCreationByTopicName}
