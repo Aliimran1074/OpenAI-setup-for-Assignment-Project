@@ -59,13 +59,18 @@ const createAssignmentByGivingPdf = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: "PDF required" });
 
-    const fileBuffer = fs.readFileSync(req.file.path);
+    // const fileBuffer = fs.readFileSync(req.file.path);
+    const fileBuffer = req.file.buffer;
     const pdfData = await pdfParse(fileBuffer);
     const text = cleanPdfText(pdfData.text);
 
     const prompt = `
-I am providing you a text which will extract from a pdf you will have to create an assignmnet of medium level consist me of 3 questions from it , but remember its a text from pdf so chances of any header footer any irrelvant text so avoid the irrevalnat text and make assignment from the relevant topic,Extract 3 medium-level assignment questions from this PDF text. Ignore headers, footers, or irrelevant content. Return ONLY JSON in this format:
-
+I am providing you a text which will extract from a pdf you will have to create an assignmnet of medium level consist me of 3 questions from it , but remember its a text from pdf so chances of any header footer any irrelvant text so avoid the irrevalnat text and make assignment from the relevant topic,Extract 3 medium-level assignment questions from this PDF text. Ignore headers, footers, or irrelevant content.Return ONLY a valid JSON object. 
+Do NOT wrap the JSON in quotes. 
+Do NOT escape characters. 
+Do NOT include \n, \t, or + anywhere. 
+Do NOT return any explanation outside the JSON.
+Format:
 {
   "title": "Assignment Title",
   "questions": [
@@ -85,7 +90,7 @@ ${text}
       ],
       temperature: 0.2
     });
-
+    console.log(response)
     return res.json({
       success: true,
       assignment: response.choices[0].message.content
