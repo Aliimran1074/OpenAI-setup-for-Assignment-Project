@@ -3,11 +3,20 @@ const {detectPdfFileType}= require('../AssignmentFileJustification/fileJustifica
 const { assignmentCheckerPrompt } = require('../prompts.js')
 const {openai} = require('../setup')
 
-const checkAssignment = async ({ questions, content }) => {
-  console.log("Enter in Check Quiz Function");
+const checkAssignment = async ( questions, content ) => {
+  // console.log("Enter in Check Assignment Function");
+  // console.log("Content :",content)
+  const contentType= content.type
+  console.log("PDF Type:",contentType)
+  const pages = content.pdfPages
+  const contentLength=pages.length
+  const images = pages.map(page=>page.image)
 
-  const contentType= content.pdfType
-  if(contentType=="Mixed" || contentType=="Images"){
+  console.log("Filter Images:",images)
+  console.log(contentLength)
+  // console.log("Questions is :",questions.length)
+  if(contentType=="MIXED" || contentType=="SCANNED"){ 
+    // text work reamining
   const response = await openai.responses.create({
     model: "gpt-4.1",
     temperature: 0.2,
@@ -45,7 +54,7 @@ Return ONLY valid JSON:
           },
 
           // ✅ FIX 2: correct image input
-  ...content.map(buffer => ({
+  ...images.map(buffer => ({
             type: "input_image",
             image_url: `data:image/jpeg;base64,${buffer.toString("base64")}`
           }))
@@ -144,16 +153,25 @@ const assignmentCheckerHandler = async(req,res)=>{
     const {questions} = req.body
     const pdfFile = req.file
     const questionsArray = JSON.parse(questions)
+    console.log(questions)
+    console.log(questionsArray.length)
     if(!Array.isArray(questionsArray)) return res.status(400).json({message:"Invalid Input"})
      
       if(!pdfFile) return res.status(404).json({message:"No Such File Found"})
       const pdfBuffer = pdfFile.buffer
       const checkFileType = await detectPdfFileType(pdfBuffer)
-      const checkAssignmentData = await checkAssignment({questions,checkPdfFile})    
+      // console.log('Check File Type :',checkFileType)
+      const checkAssignmentData = await checkAssignment(questionsArray,checkFileType)
+      if(!checkAssignmentData){
+        return res.status(404).json({message:"Issue in Assignment Data Function"})
+      }
+      console.log(checkAssignmentData)
+      return res.status(200).json({message:"Assignment Output Data",checkAssignmentData})    
 
   } catch (error) {
-    
+    console.log('Error in  Assignment Handler Function',error)
+    return res.status(404).json("Error in Assignment Handler Function",error)
   }
 }
 
-module.exports= {checkPdfFile}
+module.exports= {assignmentCheckerHandler}
